@@ -109,3 +109,36 @@ def test_review_respects_explicit_llm_disable_setting(monkeypatch):
         )
     assert response.status_code == 200
     assert response.json()["generation_mode"] == "rule_based"
+
+
+def test_langchain_review_timeout_returns_without_second_unbounded_llm_call(monkeypatch):
+    import asyncio
+
+    from app.api.routes import reviews as review_routes
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_provider", "ollama")
+    monkeypatch.setattr(settings, "agent_framework", "langchain")
+
+    async def model_available():
+        return True
+
+    monkeypatch.setattr(review_routes, "_ollama_model_is_available", model_available)
+
+    class TimeoutWorkflow:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def agenerate_review(self, *args, **kwargs):
+            raise asyncio.TimeoutError
+
+    monkeypatch.setattr(review_routes, "LangChainMultiAgentWorkflow", TimeoutWorkflow)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/reviews/samsung-galaxy-s23",
+            json={"include_limitations": True},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["generation_mode"] == "rule_based"
+    assert "Samsung Galaxy S23" in response.json()["review"]

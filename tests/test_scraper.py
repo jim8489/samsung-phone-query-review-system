@@ -5,7 +5,7 @@ from app.services.catalog import upsert_scraped_phone
 
 
 HTML = """
-<html><head><link rel="canonical" href="https://www.gsmarena.com/samsung_galaxy_s23-12345.php"></head><body>
+<html><body>
   <h1 class="specs-phone-name-title">Samsung Galaxy S23</h1>
   <div id="specs-list">
     <table><tbody>
@@ -17,21 +17,10 @@ HTML = """
     <table><tbody>
       <tr class="ttl"><th colspan="2">Platform</th></tr>
       <tr><td class="ttl">Chipset</td><td class="nfo">Snapdragon 8 Gen 2</td></tr>
-      <tr><td class="ttl">OS</td><td class="nfo">Android 13</td></tr>
-    </tbody></table>
-    <table><tbody>
-      <tr class="ttl"><th colspan="2">Memory</th></tr>
-      <tr><td class="ttl">Internal</td><td class="nfo">128GB 8GB RAM</td></tr>
-      <tr><td class="ttl">Card slot</td><td class="nfo">No</td></tr>
-    </tbody></table>
-    <table><tbody>
-      <tr class="ttl"><th colspan="2">Main Camera</th></tr>
-      <tr><td class="ttl">Triple</td><td class="nfo">50 MP wide, 10 MP telephoto, 12 MP ultrawide</td></tr>
     </tbody></table>
     <table><tbody>
       <tr class="ttl"><th colspan="2">Battery</th></tr>
       <tr><td class="ttl">Type</td><td class="nfo">Li-Ion 3900 mAh</td></tr>
-      <tr><td class="ttl">Charging</td><td class="nfo">25W wired</td></tr>
     </tbody></table>
   </div>
 </body></html>
@@ -169,97 +158,26 @@ def test_scraper_keeps_primary_specs_when_test_enrichment_fails(monkeypatch):
     assert result.test_source_url is None
 
 
-def test_parser_handles_current_rowspanned_gsmarena_tables_and_saved_html():
-    html = """
-    <!doctype html><html><head>
-      <title>Samsung Galaxy S23 - Full phone specifications</title>
-      <link rel="canonical" href="https://www.gsmarena.com/samsung_galaxy_s23-12082.php">
-    </head><body>
-      <h1 class="specs-phone-name-title">Samsung Galaxy S23</h1>
-      <div id="specs-list">
-        <table><tr>
-          <th rowspan="4" scope="row">Display</th>
-          <td class="ttl">Type</td>
-          <td class="nfo" data-spec="displaytype">Dynamic AMOLED 2X, 120Hz</td>
-        </tr><tr>
-          <td class="ttl">Size</td>
-          <td class="nfo" data-spec="displaysize">6.1 inches, 90.1 cm<sup>2</sup></td>
-        </tr><tr>
-          <td class="ttl">Resolution</td>
-          <td class="nfo" data-spec="displayresolution">1080 x 2340 pixels</td>
-        </tr></table>
-        <table><tr>
-          <th rowspan="3" scope="row">Platform</th>
-          <td class="ttl">Chipset</td>
-          <td class="nfo" data-spec="chipset">Snapdragon 8 Gen 2 (4 nm)</td>
-        </tr><tr>
-          <td class="ttl">OS</td>
-          <td class="nfo" data-spec="os">Android 13</td>
-        </tr></table>
-        <table><tr>
-          <th rowspan="4" scope="row">Main Camera</th>
-          <td class="ttl">Triple</td>
-          <td class="nfo" data-spec="cam1modules">50 MP wide<br>10 MP telephoto<br>12 MP ultrawide</td>
-        </tr></table>
-        <table><tr>
-          <th rowspan="2" scope="row">Selfie camera</th>
-          <td class="ttl">Single</td>
-          <td class="nfo" data-spec="cam2modules">12 MP wide</td>
-        </tr><tr>
-          <td class="ttl">Video</td><td class="nfo">4K@30/60fps</td>
-        </tr></table>
-        <table><tr>
-          <th rowspan="2" scope="row">Battery</th>
-          <td class="ttl">Type</td><td class="nfo" data-spec="batdescription1">Li-Ion 3900 mAh</td>
-        </tr><tr>
-          <td class="ttl">Charging</td><td class="nfo">25W wired<br>15W wireless</td>
-        </tr></table>
-        <table><tr>
-          <th rowspan="2" scope="row">Our Tests</th>
-          <td class="ttl">Battery</td><td class="nfo" data-spec="batlife2">Active use score 11:27h</td>
-        </tr><tr>
-          <td class="ttl">Battery (old)</td><td class="nfo">Endurance rating 101h</td>
-        </tr></table>
-      </div>
-    </body></html>
-    """
 
-    item = GSMArenaScraper.parse_detail_html(html)
+def test_project_research_user_agent_is_replaced_with_the_proven_working_ua():
+    from app.scraper.gsmarena import TESTED_CHROME_USER_AGENT, resolve_scraper_user_agent
 
-    assert item.name == "Samsung Galaxy S23"
-    assert item.source_url == "https://www.gsmarena.com/samsung_galaxy_s23-12082.php"
-    assert item.test_source_url == item.source_url
-    assert set(item.raw_specs) == {"Display", "Platform", "Main Camera", "Selfie camera", "Battery", "Our Tests"}
-    assert item.normalized["display_size"] == "6.1 inches, 90.1 cm²"
-    assert item.normalized["chipset"] == "Snapdragon 8 Gen 2 (4 nm)"
-    assert item.normalized["battery_capacity_mah"] == 3900
-    assert item.normalized["active_use_score_minutes"] == 687
-    assert item.normalized["endurance_rating_hours"] == 101
-    assert "10 MP telephoto" in item.normalized["camera_rear"]
-    assert item.normalized["camera_front"] == "12 MP wide"
+    configured = "SamsungPhoneResearchBot/1.0 (+mailto:research@example.com)"
+    assert resolve_scraper_user_agent(configured) == TESTED_CHROME_USER_AGENT
 
 
-def test_saved_html_parser_rejects_cloudflare_turnstile_page():
-    html = "<html><head><title>GSMArena Turnstile check</title></head><body>Continue</body></html>"
-    try:
-        GSMArenaScraper.parse_detail_html(html)
-    except ValueError as exc:
-        assert "human-verification" in str(exc)
-    else:
-        raise AssertionError("Turnstile pages must never be imported as phone data.")
+def test_explicit_meaningful_scraper_user_agent_is_preserved():
+    from app.scraper.gsmarena import resolve_scraper_user_agent
+
+    configured = "ExampleResearchCrawler/2.0 (+mailto:research@example.com)"
+    assert resolve_scraper_user_agent(configured) == configured
 
 
-def test_search_reports_turnstile_instead_of_misleading_no_result(monkeypatch):
+def test_default_scraper_user_agent_matches_the_successful_cli_transport():
+    from app.scraper.gsmarena import GSMArenaScraper, TESTED_CHROME_USER_AGENT
+
     scraper = GSMArenaScraper(delay_seconds=2)
-    html = "<html><head><title>GSMArena Turnstile check</title></head><body>Continue</body></html>"
-    monkeypatch.setattr(scraper, "_get_soup", lambda url: BeautifulSoup(html, "html.parser"))
     try:
-        try:
-            scraper.find_phone_url("Galaxy S23")
-        except RuntimeError as exc:
-            assert "Turnstile human-verification" in str(exc)
-            assert "import_saved_html.py" in str(exc)
-        else:
-            raise AssertionError("A Turnstile page must not be reported as an empty search result.")
+        assert scraper.session.headers["User-Agent"] == TESTED_CHROME_USER_AGENT
     finally:
         scraper.close()

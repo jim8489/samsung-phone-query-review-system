@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_timeout_seconds: float = 75.0
+    # Bound local multi-agent generation so a review request cannot loop forever.
+    agent_request_timeout_seconds: float = 35.0
+    agent_total_timeout_seconds: float = 90.0
+    agent_recursion_limit: int = 5
+    agent_max_output_tokens: int = 384
 
     seed_demo_data: bool = True
     scraper_user_agent: str = (

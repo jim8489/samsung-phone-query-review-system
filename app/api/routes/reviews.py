@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.agents.langchain_workflow import LangChainMultiAgentWorkflow
 from app.agents.review_agent import ReviewAgent
@@ -53,21 +53,26 @@ async def generate_review(slug: str, payload: ReviewRequest, db: Session = Depen
 
     if settings.agent_framework == "langchain" and await _ollama_model_is_available():
         try:
-            def _run_multi_agent_review():
-                # SQLAlchemy Session objects are not shared across worker threads.
-                with SessionLocal() as agent_db:
-                    return LangChainMultiAgentWorkflow(agent_db, session_factory=SessionLocal).generate_review(
-                        slug,
-                        payload.include_limitations,
-                    )
-
-            multi_agent_result = await run_in_threadpool(_run_multi_agent_review)
+            with SessionLocal() as agent_db:
+                workflow = LangChainMultiAgentWorkflow(agent_db, session_factory=SessionLocal)
+                multi_agent_result = await asyncio.wait_for(
+                    workflow.agenerate_review(slug, payload.include_limitations),
+                    timeout=settings.agent_total_timeout_seconds,
+                )
             result["review"] = multi_agent_result["review"]
             generation_mode = "langchain_multi_agent"
+        except asyncio.TimeoutError:
+            logger.error(
+                "LangChain review exceeded the %.1f-second request deadline for %s; returning deterministic review.",
+                settings.agent_total_timeout_seconds,
+                slug,
+            )
         except Exception as exc:  # Keep API usable if optional LangChain/Ollama is not ready.
-            logger.warning("LangChain multi-agent review unavailable; trying the single-agent Ollama fallback: %s", exc)
+            logger.warning("LangChain multi-agent review unavailable; returning deterministic review: %s", exc)
 
-    if generation_mode == "rule_based":
+    # Avoid making a second unbounded Ollama request after a LangChain timeout.
+    # The deterministic review is returned promptly and explicitly reports rule_based.
+    if generation_mode == "rule_based" and settings.agent_framework != "langchain":
         generated = await OllamaClient().answer(
             query=(
                 f"Write a balanced, detailed review of {phone.name}. Explain its display, cameras, "

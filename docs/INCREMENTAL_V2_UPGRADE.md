@@ -48,3 +48,12 @@ A record counts as live only if it is marked `data_quality='scraped'`, has a can
 The Requests transport remains available for sites/pages that serve ordinary HTML, but your observed GSMArena search request returned the Cloudflare Turnstile page. Selenium is the default because Chrome works after your own browser verification. The scraper uses a minimum two-second delay and defaults to three seconds. It does not evade access restrictions. If GSMArena continues to deny automated access after normal human verification, stop and follow the site's terms rather than increasing request frequency or trying to defeat the challenge.
 
 The BeautifulSoup parser handles GSMArena's row-spanned section headings and retains every parsed specification row. The current page's `Our Tests` section supplies active-use and endurance metrics; battery mAh is not used as a substitute for measured battery life. GSMArena affiliate price offers are stored as dated, currency-specific, merchant-attributed observations, not as Bangladesh local market prices.
+
+
+## Swagger scraper and product-review reliability fix
+
+The Swagger scraper route and CLI now share the same tested User-Agent resolver. The earlier mismatch caused the CLI to succeed while `/api/scraper/run` used the project placeholder User-Agent from `.env` and received a catalogue response without phone links. Project-branded placeholder values now resolve to the known-working browser User-Agent; explicit meaningful custom User-Agents remain supported.
+
+LangChain review agents now have bounded graph recursion, bounded Ollama HTTP requests, and a maximum output-token setting. FastAPI uses the asynchronous agent invocation with an overall deadline. If LangChain/Ollama exceeds the deadline or errors, the endpoint returns the deterministic specification-based review instead of launching another unbounded Ollama fallback. The response reports `generation_mode=rule_based` in that case.
+
+Configuration defaults: `AGENT_REQUEST_TIMEOUT_SECONDS=35`, `AGENT_TOTAL_TIMEOUT_SECONDS=90`, `AGENT_RECURSION_LIMIT=5`, and `AGENT_MAX_OUTPUT_TOKENS=384`.

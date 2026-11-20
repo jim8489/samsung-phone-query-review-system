@@ -52,13 +52,19 @@ class LangChainMultiAgentWorkflow:
             model=settings.ollama_model,
             base_url=settings.ollama_base_url,
             temperature=0.15,
+            num_predict=settings.agent_max_output_tokens,
+            num_ctx=4096,
+            keep_alive="10m",
+            # langchain-ollama forwards this to its httpx clients.
+            client_kwargs={"timeout": settings.agent_request_timeout_seconds},
         )
         self.specification_agent = agent_factory(
             model=self.model,
             tools=[self.retrieve_phone_specifications],
             system_prompt=(
                 "You are the Specification Retrieval Agent for a Samsung phone catalogue. "
-                "You MUST call retrieve_phone_specifications before answering. Return only "
+                "Call retrieve_phone_specifications once before answering. After receiving its "
+                "result, do not call the tool again. Return only "
                 "facts present in the database tool output. Preserve units and distinguish "
                 "measured battery tests from battery capacity. Include source labels and URLs."
             ),
@@ -68,8 +74,9 @@ class LangChainMultiAgentWorkflow:
             model=self.model,
             tools=[self.retrieve_review_evidence],
             system_prompt=(
-                "You are the Product Review Agent. You MUST call retrieve_review_evidence "
-                "before generating a review. Use the specification agent's handoff plus the "
+                "You are the Product Review Agent. Call retrieve_review_evidence once "
+                "before generating a review. After receiving its result, do not call the tool again. "
+                "Use the specification agent's handoff plus the "
                 "database evidence only. Produce a balanced detailed review covering display, "
                 "performance, cameras, battery, software, price evidence when recorded, "
                 "strengths, limitations, and missing information. Never invent test results, "
@@ -146,7 +153,8 @@ class LangChainMultiAgentWorkflow:
                         ),
                     }
                 ]
-            }
+            },
+            config={"recursion_limit": settings.agent_recursion_limit},
         )
         specification_handoff = self._last_ai_text(specification_result)
 
@@ -165,7 +173,61 @@ class LangChainMultiAgentWorkflow:
                         ),
                     }
                 ]
-            }
+            },
+            config={"recursion_limit": settings.agent_recursion_limit},
+        )
+        review_text = self._last_ai_text(review_result)
+        return {
+            "review": review_text,
+            "specification_agent_output": specification_handoff,
+            "review_agent_output": review_text,
+        }
+
+    async def agenerate_review(self, phone_slug: str, include_limitations: bool = True) -> dict[str, str]:
+        """Async equivalent used by FastAPI so request cancellation reaches Ollama.
+
+        The database read is short and local. Agent model requests use LangChain's
+        async path; the endpoint wraps this method in an overall deadline.
+        """
+        phone = self.db.scalar(select(Phone).where(Phone.slug == phone_slug))
+        if phone is None:
+            raise LookupError(f"Phone {phone_slug!r} was not found.")
+
+        invoke_config = {"recursion_limit": settings.agent_recursion_limit}
+        specification_result = await self.specification_agent.ainvoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Retrieve the full stored specifications and source evidence for "
+                            f"{phone.name} (slug: {phone_slug}). Include camera, display, platform, "
+                            "memory, battery tests, and any recorded price observations."
+                        ),
+                    }
+                ]
+            },
+            config=invoke_config,
+        )
+        specification_handoff = self._last_ai_text(specification_result)
+
+        review_result = await self.review_agent.ainvoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Generate a detailed balanced product review for {phone.name}. "
+                            f"Phone slug: {phone_slug}. Include limitations: {include_limitations}.\n\n"
+                            "Handoff from Specification Retrieval Agent:\n"
+                            f"{specification_handoff}\n\n"
+                            "Call retrieve_review_evidence once for this slug, then combine the "
+                            "verified facts from both agents into the final review."
+                        ),
+                    }
+                ]
+            },
+            config=invoke_config,
         )
         review_text = self._last_ai_text(review_result)
         return {

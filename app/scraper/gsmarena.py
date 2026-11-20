@@ -19,7 +19,30 @@ from app.scraper.normalization import normalize_specs
 BASE_URL = "https://www.gsmarena.com"
 SAMSUNG_CATALOGUE_URL = f"{BASE_URL}/samsung-phones-9.php"
 DEFAULT_MAX_CATALOGUE_PAGES = 30
+# This is the exact browser User-Agent that succeeded in the user's live
+# catalogue and direct-specification diagnostics. The CLI and API must share it.
+TESTED_CHROME_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/157.0.0.0 Safari/537.36"
+)
 logger = logging.getLogger(__name__)
+
+
+def resolve_scraper_user_agent(configured: str | None = None) -> str:
+    """Resolve the same working User-Agent for CLI and HTTP API scraping.
+
+    The original project-branded ResearchBot placeholder is intentionally not
+    used: the live diagnostic succeeded with the browser User-Agent, whereas
+    the Swagger route used the placeholder and received an unparseable page.
+    A caller can still explicitly configure a different, meaningful UA.
+    """
+    candidate = (configured or "").strip()
+    if not candidate or candidate.casefold().startswith((
+        "samsungphoneresearchbot/", "samsungphonequeryreview/"
+    )) or "your_contact_email" in candidate.casefold() or "configure a real contact" in candidate.casefold():
+        return TESTED_CHROME_USER_AGENT
+    return candidate
 
 
 @dataclass(slots=True)
@@ -102,7 +125,7 @@ class GSMArenaScraper:
         self.session = requests.Session()
         self.session.headers.update(
             {
-                "User-Agent": user_agent or settings.scraper_user_agent,
+                "User-Agent": resolve_scraper_user_agent(user_agent or settings.scraper_user_agent),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Referer": BASE_URL + "/",

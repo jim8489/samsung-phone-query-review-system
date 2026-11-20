@@ -14,15 +14,8 @@ from app.config import settings  # noqa: E402
 from app.data.seed import DEMO_PHONES  # noqa: E402
 from app.database import SessionLocal, init_database  # noqa: E402
 from app.models import Phone  # noqa: E402
-from app.scraper.gsmarena import GSMArenaScraper  # noqa: E402
+from app.scraper.gsmarena import GSMArenaScraper, TESTED_CHROME_USER_AGENT  # noqa: E402
 from app.services.catalog import upsert_scraped_phone  # noqa: E402
-
-
-TESTED_CHROME_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/157.0.0.0 Safari/537.36"
-)
 
 
 def main() -> None:
