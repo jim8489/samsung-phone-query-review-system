@@ -1,0 +1,6 @@
+# Optional upgrade dependencies for the existing v2 virtual environment.
+# This file intentionally does not reinstall or upgrade the base application stack.
+selenium>=4.30,<5.0
+langchain>=1.0,<2.0
+langchain-ollama>=1.0,<2.0
+psycopg[binary]>=3.2,<4.0

@@ -1,0 +1,9 @@
+Incremental overlay for existing v2 project
+
+REPLACE:
+  app/scraper/gsmarena.py
+
+ADD:
+  PATCH_README.md
+
+No database, .env, .venv, user data, requirements, or other application files are included.

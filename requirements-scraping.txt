@@ -1,0 +1,2 @@
+# Visible Chrome automation for the GSMArena scraper.
+selenium>=4.30,<5.0

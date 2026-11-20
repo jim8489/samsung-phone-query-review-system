@@ -1,0 +1,57 @@
+### Health
+GET http://127.0.0.1:8000/api/health
+
+### List Samsung phones
+GET http://127.0.0.1:8000/api/phones?limit=20
+
+### Full phone record
+GET http://127.0.0.1:8000/api/phones/samsung-galaxy-s23
+
+### Compare S23 and S22
+GET http://127.0.0.1:8000/api/phones/compare?slugs=samsung-galaxy-s23,samsung-galaxy-s22
+
+### Battery capacity ranking
+GET http://127.0.0.1:8000/api/phones/best-battery
+
+### Chat: camera specs
+POST http://127.0.0.1:8000/api/chat
+Content-Type: application/json
+
+{
+  "query": "What are the camera specifications of the Samsung Galaxy S23?"
+}
+
+### Chat: best battery capacity
+POST http://127.0.0.1:8000/api/chat
+Content-Type: application/json
+
+{
+  "query": "Which Samsung phone has the best battery life?"
+}
+
+### Review agent
+POST http://127.0.0.1:8000/api/reviews/samsung-galaxy-s23
+Content-Type: application/json
+
+{
+  "include_limitations": true
+}
+
+### Add a dated price observation (use a real source before doing this)
+POST http://127.0.0.1:8000/api/phones/samsung-galaxy-s23/prices
+Content-Type: application/json
+
+{
+  "amount": 85000,
+  "currency": "BDT",
+  "source": "Retailer name / product URL"
+}
+
+### Scrape two models
+POST http://127.0.0.1:8000/api/scraper/run
+Content-Type: application/json
+
+{
+  "models": ["Galaxy S23", "Galaxy S24 Ultra"],
+  "delay_seconds": 2
+}

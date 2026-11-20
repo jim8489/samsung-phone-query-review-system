@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101b35">
+  <title>Samsung Phone Research</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Samsung Phone Research home">
+        <span class="brand-mark">S</span>
+        <span><strong>Device Atlas</strong><small>Samsung phone intelligence</small></span>
+      </a>
+      <nav><a href="#catalog">Catalogue</a><a href="/docs" target="_blank" rel="noreferrer">API docs ↗</a></nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="live-dot"></span> RESEARCH WORKSPACE</div>
+          <h1>Find the right<br><em>Galaxy.</em></h1>
+          <p>Explore specifications, compare models and ask a research assistant. Answers are grounded in the phone catalogue, with source and data-quality notes.</p>
+          <div class="hero-actions"><a class="primary-link" href="#assistant">Ask the assistant <span>↗</span></a><a class="subtle-link" href="#catalog">Browse phones ↓</a></div>
+        </div>
+        <div class="hero-card" aria-label="System capabilities">
+          <div class="hero-card-top"><span>RESEARCH PIPELINE</span><span class="status-pill">ONLINE</span></div>
+          <div class="pipeline-step"><span class="step-icon">01</span><div><strong>GSMArena scraper</strong><small>BeautifulSoup · structured specs</small></div><span class="step-check">✓</span></div>
+          <div class="pipeline-line"></div>
+          <div class="pipeline-step"><span class="step-icon">02</span><div><strong>RAG retrieval</strong><small>BM25 · evidence-grounded context</small></div><span class="step-check">✓</span></div>
+          <div class="pipeline-line"></div>
+          <div class="pipeline-step"><span class="step-icon">03</span><div><strong>Specialist agents</strong><small>Specifications · product review</small></div><span class="step-check">✓</span></div>
+          <div class="hero-card-foot"><span>LOCAL-FIRST ARCHITECTURE</span><span>v1.2.0</span></div>
+        </div>
+      </section>
+
+      <section id="assistant" class="assistant-section">
+        <div class="section-heading"><div><div class="eyebrow">ASK A QUESTION</div><h2>Samsung research assistant</h2></div><span class="section-note">RAG-powered · optional local LLM</span></div>
+        <div class="chat-panel">
+          <div class="chat-intro"><div class="assistant-avatar">✦</div><div><strong>What would you like to know?</strong><p>Ask about camera hardware, display, chipset, battery capacity, or compare two models.</p></div></div>
+          <div id="chat-messages" class="chat-messages" aria-live="polite">
+            <div class="message assistant-message"><div class="message-label">DEVICE ATLAS</div><div class="message-bubble">Try: <button class="suggestion" data-query="What are the camera specifications of the Galaxy S23?">“What are the camera specs of the Galaxy S23?”</button> or <button class="suggestion" data-query="Compare the Galaxy S23 and Galaxy S22 performance and display.">“Compare the S23 and S22.”</button></div></div>
+          </div>
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-query">Ask a question</label>
+            <input id="chat-query" name="query" autocomplete="off" maxlength="2000" placeholder="Ask anything about Samsung phones…" required>
+            <button id="send-button" type="submit"><span>Send</span><b>↑</b></button>
+          </form>
+          <div class="chat-disclaimer">Answers are based on stored specifications. Market prices and real-world battery life may need separate verification.</div>
+        </div>
+      </section>
+
+      <section id="catalog" class="catalog-section">
+        <div class="section-heading"><div><div class="eyebrow">THE DEVICE LIBRARY</div><h2>Samsung catalogue</h2></div><div class="catalog-tools"><span id="phone-count" class="count-label">Loading models…</span><input id="phone-search" class="search-input" type="search" placeholder="Search models" aria-label="Search phone models"></div></div>
+        <div id="phone-grid" class="phone-grid"><div class="loading-card">Loading phone catalogue…</div></div>
+      </section>
+    </main>
+
+    <footer><div class="footer-brand">DEVICE ATLAS <span>·</span> SAMSUNG PHONE INTELLIGENCE</div><div>Built with FastAPI · SQLAlchemy · BeautifulSoup · BM25 RAG</div></footer>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

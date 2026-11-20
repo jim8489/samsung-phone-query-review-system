@@ -1,0 +1,3 @@
+# LangChain multi-agent orchestration with a local Ollama chat model.
+langchain>=1.0,<2.0
+langchain-ollama>=1.0,<2.0
