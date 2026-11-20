@@ -1,200 +1,348 @@
 # Samsung Phone Query & Review System
 
-A FastAPI web application for Samsung smartphone research. It combines browser-based GSMArena collection, BeautifulSoup specification parsing, SQLAlchemy storage, BM25 retrieval-augmented generation (RAG), a local Ollama model, LangChain specialist agents and a browser UI.
+A FastAPI web application for collecting, exploring, comparing, and reviewing Samsung smartphones. The project combines a catalogue-driven GSMArena crawler, BeautifulSoup extraction, SQLAlchemy persistence, BM25 retrieval-augmented generation (RAG), a local Ollama model, a LangChain two-agent review workflow, and a browser-based interface.
+
+> **Current implementation note:** The verified command-line crawler uses **Requests + BeautifulSoup** to discover Samsung models from GSMArena's manufacturer catalogue and fetch their direct specification pages. Selenium is not used by the default, verified scraping command. The project may contain optional browser automation code, but the successful 12-model collection described below was performed by the HTTP/BeautifulSoup crawler.
 
 ## Features
 
-- **Automated GSMArena scraper:** Selenium navigates GSMArena in a visible Chrome session; BeautifulSoup parses the search/detail HTML. If Cloudflare Turnstile appears, the scraper pauses for a person to complete verification in Chrome. It does not bypass human verification. Successful phone records are written straight to the configured database.
-- **Structured data:** SQLAlchemy tables for phones, individual specification rows, dated price observations and chat history. SQLite is the default; PostgreSQL is supported, with a non-destructive migration script.
-- **RAG chatbot:** BM25 retrieves relevant phone records and complete stored specification rows before the answer is generated. It covers camera, display, chipset/performance, features, price, comparisons and battery questions.
-- **Open-source local LLM:** Ollama with a model such as `qwen2.5:3b`. The application retains a grounded fallback if Ollama is unavailable and reports which mode was used.
-- **LangChain multi-agent review:** A Specification Retrieval Agent uses a database-backed BM25/SQL tool and passes its evidence to a Product Review Agent, which retrieves full evidence and generates a balanced, source-grounded review.
-- **FastAPI + web UI:** Catalogue, compare, battery, price, chat, review, system-status and scraper endpoints, with Swagger documentation.
+- **Catalogue-driven GSMArena scraping:** Starts from the Samsung manufacturer catalogue, follows catalogue pagination, selects exact model links, fetches each phone's specification page, detects human-verification pages, and stops rather than treating a challenge page as phone data.
+- **Structured specifications:** Preserves specification sections and rows, while normalizing important fields such as display size/resolution, rear and front cameras, chipset, memory, battery capacity, charging, measured active-use score, and endurance rating.
+- **Price observations:** Stores dated price observations with currency and source/merchant metadata when that information is available on the source page. Affiliate prices are reference observations, not guaranteed local retail prices.
+- **SQLAlchemy database:** Supports SQLite for simple local setup and PostgreSQL for the assessment deployment. A non-destructive migration script copies the existing SQLite data into an empty PostgreSQL database.
+- **RAG chatbot:** Uses BM25 lexical retrieval across normalized phone fields and stored specification rows, then uses Ollama to generate a response grounded in the retrieved records. The API identifies whether an answer used Ollama or the deterministic fallback.
+- **Open-source local LLM:** Tested with Ollama and `qwen2.5:3b`; no hosted model API key is required.
+- **LangChain multi-agent reviews:** A Specification Retrieval Agent queries the database and passes evidence to a Product Review Agent, which retrieves the phone's evidence and generates a balanced, source-grounded review.
+- **FastAPI and web interface:** Provides a responsive browser UI, REST endpoints, and interactive Swagger documentation.
+- **Automated tests and CI:** Includes an isolated test database, scraper/parser tests, API tests, agent workflow tests, and a GitHub Actions workflow.
+
+## Technology stack
+
+| Area | Technology |
+|---|---|
+| Language | Python 3.11+ |
+| API | FastAPI, Uvicorn, Pydantic |
+| Scraping | Requests, BeautifulSoup 4 |
+| Database / ORM | SQLAlchemy 2.x, SQLite, PostgreSQL 16 |
+| Retrieval | BM25 lexical retrieval over database records |
+| LLM | Ollama (`qwen2.5:3b`) |
+| Agent orchestration | LangChain `create_agent` and `langchain-ollama` |
+| Frontend | HTML, CSS, JavaScript |
+| Tests / CI | pytest, GitHub Actions, Node syntax check |
+| Containers | Docker Compose for PostgreSQL |
+
+## Architecture
+
+```text
+GSMArena Samsung catalogue
+          |
+          v
+Requests crawler ---- catalogue pagination / exact model links
+          |
+          v
+BeautifulSoup parser ---- raw sections + normalized fields + price/test evidence
+          |
+          v
+SQLAlchemy upsert ---- SQLite or PostgreSQL
+          |
+          +-------------------------------+
+          |                               |
+          v                               v
+BM25 retrieval                    Phone / price / compare APIs
+          |
+          v
+Ollama Qwen2.5 3B
+          |
+          +---- RAG chatbot response with source records
+          |
+          +---- LangChain Specification Agent
+                         |
+                         v
+                LangChain Product Review Agent
+                         |
+                         v
+                 Source-grounded review
+
+FastAPI serves the API, Swagger docs, and browser UI.
+```
+
+## Verified project status
+
+The maintainer's local run (20 November 2026) completed the following checks:
+
+- **12/12 Samsung models scraped successfully** from GSMArena, with zero failed models.
+- **12 live records** passed `scripts/verify_scraped_catalog.py` with source URLs and collection timestamps.
+- The PostgreSQL 16 database check reported **12 phones, 593 specification rows, and 58 price observations**.
+- The local test suite reported **48 passing tests**.
+- `scripts/verify_ollama_rag.py` returned `Generation mode: ollama_rag` using Qwen2.5 3B and retrieved Galaxy S23 evidence.
+- The review endpoint returned `generation_mode: langchain_multi_agent` for the Galaxy S23.
+
+These are the results from the maintainer's tested environment. The live database, local Ollama model, and scraped records are not committed to this repository; a fresh clone must run the setup and data-collection steps below.
 
 ## Requirements
 
 - Python 3.11 or newer
-- Google Chrome for live browser scraping
-- Internet access to access public GSMArena pages
-- Ollama for an actual local-LLM demonstration
-- Docker Desktop + Docker Compose for PostgreSQL (optional, but the assessment execution plan explicitly asks for PostgreSQL)
+- Internet access to retrieve public GSMArena catalogue and phone pages
+- Ollama for local LLM generation and LangChain reviews
+- Docker Desktop + Docker Compose if you want to run PostgreSQL
+- Node.js only for the frontend JavaScript syntax check during development
 
-## Run the existing local project
+## Quick start
 
-For a fresh install, create a virtual environment, install core requirements, copy `.env.example` to `.env`, and start FastAPI:
+### 1. Clone and install
 
 ```bash
+git clone https://github.com/jim8489/samsung-phone-query-review-system.git
+cd samsung-phone-query-review-system
+
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+pip install -r requirements-addons.txt
+```
+
+On Windows, activate the virtual environment with `.venv\\Scripts\\activate`.
+
+### 2. Configure the environment
+
+```bash
 cp .env.example .env
-uvicorn app.main:app --reload
 ```
 
-For the existing v2 installation, **do not recreate `.venv` or `.env`**. Apply the incremental upgrade ZIP to the existing project root, then install only the add-on requirements:
+Update the relevant settings in `.env` (do not commit this file):
 
-```bash
-source .venv/bin/activate
-python -m pip install -r requirements-addons.txt
+```dotenv
+DATABASE_URL=sqlite:///./data/samsung_phones.db
+SEED_DEMO_DATA=true
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:3b
+AGENT_FRAMEWORK=langchain
+SCRAPER_DELAY_SECONDS=3
 ```
 
-Application URLs:
+`SEED_DEMO_DATA=true` inserts a small starter catalogue into a new/empty database. Successfully scraped records are labelled `scraped`; starter records are labelled `demo_seed`. After migrating a populated SQLite database to PostgreSQL, set `SEED_DEMO_DATA=false` to avoid inserting starter data during startup.
 
-- Web application: <http://127.0.0.1:8000>
-- Swagger: <http://127.0.0.1:8000/docs>
-- Health: <http://127.0.0.1:8000/api/health>
-- Ollama status: <http://127.0.0.1:8000/api/llm>
-- Agent status: <http://127.0.0.1:8000/api/agents>
+### 3. Start Ollama
 
-## Scrape 10–15 Samsung phones from GSMArena
-
-Install the add-on requirements once:
-
-```bash
-python -m pip install -r requirements-addons.txt
-```
-
-Run the default 12-model catalogue from an interactive Terminal:
-
-```bash
-python scripts/scrape_phones.py --delay 3
-```
-
-Selenium opens a visible Chrome window and automatically searches for each model, opens its specification page, and sends the loaded page HTML to the existing BeautifulSoup parser. Successful records are upserted into the configured database immediately; no individual HTML files need to be saved. If Turnstile appears, complete the check yourself in Chrome and press Enter in the same Terminal. The browser session uses a dedicated profile under `data/chrome_profile_gsmarena`.
-
-The default targets are Galaxy S21, S21+, S21 Ultra, S22, S22 Ultra, S23, S23+, S23 Ultra, S24, S24+, S24 Ultra and S24 FE. The existing S23 record is refreshed in place. The scraper continues after an individual model fails unless `--stop-on-error` is supplied.
-
-Verify the PDF target:
-
-```bash
-python scripts/verify_scraped_catalog.py --minimum 10 --maximum 15
-```
-
-A record counts only when it has `data_quality='scraped'`, a GSMArena source URL, a collection timestamp, at least four spec sections and at least 15 spec rows. Demo seed records do not count. The scraper enforces a minimum two-second delay (default three seconds) and never attempts to defeat Cloudflare or another access control. If GSMArena still restricts automated access after normal human verification, stop and follow the site's terms.
-
-For selected models:
-
-```bash
-python scripts/scrape_phones.py --models "Galaxy S23 Ultra" "Galaxy S24 Ultra" --delay 3
-```
-
-## Enable the Ollama RAG chatbot
-
-Install the Ollama macOS app from <https://ollama.com/download/mac>, open it, then run:
+Install Ollama from <https://ollama.com/download>, launch it, and download the model:
 
 ```bash
 ollama pull qwen2.5:3b
 ollama list
 ```
 
-Add/update the following in your existing `.env` (do not overwrite unrelated settings):
-
-```dotenv
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:3b
-AGENT_FRAMEWORK=langchain
-```
-
-Restart Uvicorn after changing `.env`, then check `http://127.0.0.1:8000/api/llm`. It should show the model as reachable and installed. Run a real RAG acceptance query:
+Check that the local model is available:
 
 ```bash
-python scripts/verify_ollama_rag.py --query "What are the rear camera specifications of the Samsung Galaxy S23?"
+curl http://localhost:11434/api/tags
 ```
 
-The check passes only when the chatbot response uses `mode=ollama_rag`; `rag_fallback` means Ollama was not used. Try the assessment's three questions in the web UI or through `POST /api/chat`: S23 camera specifications, best measured battery life, and S23 vs S22 performance. The assistant distinguishes battery capacity in mAh from GSMArena active-use/endurance tests.
+### 4. Start the API and web application
 
-## Demonstrate the LangChain multi-agent review
+```bash
+uvicorn app.main:app --reload
+```
 
-The patch uses LangChain's `create_agent` API and `ChatOllama`. The agents have different responsibilities:
+Open:
 
-1. **Specification Retrieval Agent:** calls a BM25/SQL database tool and returns technical facts plus source evidence.
-2. **Product Review Agent:** receives the first agent's handoff, calls a second database evidence tool, and generates a balanced detailed review.
+- Web application: <http://127.0.0.1:8000>
+- Swagger API documentation: <http://127.0.0.1:8000/docs>
+- Health: <http://127.0.0.1:8000/api/health>
+- LLM status: <http://127.0.0.1:8000/api/llm>
+- Agent status: <http://127.0.0.1:8000/api/agents>
 
-With Ollama running and the add-on requirements installed:
+## Collect 10–15 Samsung phones from GSMArena
+
+The default command uses the **Requests + BeautifulSoup catalogue crawler**. It does not use the GSMArena quick-search endpoint and does not require Selenium to run the verified path.
+
+```bash
+python scripts/scrape_phones.py --delay 3
+```
+
+The default target list contains 12 models:
+
+1. Galaxy S21
+2. Galaxy S21+
+3. Galaxy S21 Ultra
+4. Galaxy S22
+5. Galaxy S22 Ultra
+6. Galaxy S23
+7. Galaxy S23+
+8. Galaxy S23 Ultra
+9. Galaxy S24
+10. Galaxy S24+
+11. Galaxy S24 Ultra
+12. Galaxy S24 FE
+
+The crawler starts at `https://www.gsmarena.com/samsung-phones-9.php`, follows the catalogue's next-page links as needed, matches the requested handset, and fetches the direct specification URL. It parses the page with BeautifulSoup and saves each successful phone immediately through the SQLAlchemy upsert service. A minimum delay of two seconds is enforced; three seconds is the recommended setting.
+
+To scrape selected models:
+
+```bash
+python scripts/scrape_phones.py --models "Galaxy S23" "Galaxy S24 Ultra" --delay 3
+```
+
+Verify the assessment target (10–15 live records):
+
+```bash
+python scripts/verify_scraped_catalog.py --minimum 10 --maximum 15
+```
+
+A record counts only when it is marked `data_quality='scraped'` and has a GSMArena source URL, a collection timestamp, at least four specification sections, and at least 15 specification rows. Demo seed records do not count. The crawler detects Turnstile/human-verification HTML and stops with an explicit error; it does not attempt to bypass website access controls. Availability can vary by network, request rate, or the source website's access policy.
+
+## Use the RAG chatbot
+
+The chatbot retrieves phone evidence from the configured database before asking Ollama to generate an answer. Confirm the LLM mode:
+
+```bash
+python scripts/verify_ollama_rag.py \
+  --query "What are the rear camera specifications of the Samsung Galaxy S23?"
+```
+
+A successful model-backed result reports `Generation mode: ollama_rag`. If it reports a fallback mode, the answer was not generated by Ollama.
+
+Example API request (the `session_id` can be reused across turns):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What are the rear camera specifications of the Samsung Galaxy S23?","session_id":"demo-session-001"}'
+```
+
+The three assessment-style questions to demonstrate are:
+
+- What are the camera specifications of the Samsung Galaxy S23?
+- Which Samsung phone has the best battery life?
+- How does the Galaxy S23 compare to the Galaxy S22 in terms of performance?
+
+Battery capacity (mAh), GSMArena active-use score, and GSMArena endurance rating are distinct measurements. The application ranks by measured data when available and identifies capacity as a proxy if measured tests are missing.
+
+## Generate a LangChain multi-agent review
+
+The review workflow uses two LangChain `create_agent` agents:
+
+1. **Specification Retrieval Agent** — calls a database-backed BM25/SQL tool and returns phone facts with source evidence.
+2. **Product Review Agent** — receives the first agent's evidence, calls a second database evidence tool, and generates a balanced review.
+
+Check agent configuration:
+
+```bash
+curl http://127.0.0.1:8000/api/agents
+```
+
+Generate a Galaxy S23 review:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8000/api/reviews/samsung-galaxy-s23 \
   -H 'Content-Type: application/json' \
-  -d '{"include_limitations": true}'
+  -d '{"include_limitations":true}'
 ```
 
-A successful framework-backed review reports `generation_mode=langchain_multi_agent`. If the service/model or packages are unavailable, the API remains functional and falls back; the generation mode makes that explicit. Inspect `/api/agents` for the configured framework and agent roles.
+A successful framework-backed response reports `generation_mode: langchain_multi_agent`. Other modes indicate that the endpoint used a single-model or deterministic fallback; report the mode accurately in a demonstration.
 
-## PostgreSQL setup and safe migration
+## PostgreSQL setup and SQLite migration
 
-The current local database remains SQLite until you explicitly migrate it. The migration utility will not overwrite an existing target and never modifies the SQLite source.
+SQLite is the default for a quick local run. To use PostgreSQL, the project includes a PostgreSQL 16 Docker Compose service and a non-destructive migration script.
 
-1. Install/start Docker Desktop.
-2. In `.env`, replace the `POSTGRES_PASSWORD` placeholder with a private URL-safe local password (letters/numbers recommended).
-3. Start only PostgreSQL:
+1. Start Docker Desktop.
+2. Set a private URL-safe password and host port in `.env`. Use `5433` if port `5432` is already occupied on your machine:
+
+   ```dotenv
+   POSTGRES_PASSWORD=YOUR_PRIVATE_LOCAL_PASSWORD
+   POSTGRES_PORT=5433
+   ```
+
+3. Back up the SQLite source and start PostgreSQL:
 
    ```bash
+   cp data/samsung_phones.db data/samsung_phones_backup.db
    docker compose up -d db
    docker compose ps
    ```
 
-4. Migrate the current database into the empty PostgreSQL service:
+   Wait until the database reports `healthy`.
+
+4. Migrate the existing records into the empty PostgreSQL database. Replace the password and host port with the values you configured:
 
    ```bash
    python scripts/migrate_database.py \
-     --source sqlite:///./data/samsung_phones.db \
-     --target 'postgresql+psycopg://samsung_app:YOUR_PASSWORD@localhost:5432/samsung_phones'
+     --source "sqlite:///./data/samsung_phones.db" \
+     --target "postgresql+psycopg://samsung_app:YOUR_PRIVATE_LOCAL_PASSWORD@127.0.0.1:5433/samsung_phones"
    ```
 
-5. Only after migration succeeds, change `DATABASE_URL` in `.env` to the same PostgreSQL URL and set `SEED_DEMO_DATA=false`. Restart Uvicorn and run:
+5. After migration succeeds, change `DATABASE_URL` in `.env` to the same PostgreSQL URL and set `SEED_DEMO_DATA=false`. Restart Uvicorn and verify:
 
    ```bash
    python scripts/check_database.py
+   curl http://127.0.0.1:8000/api/health
    ```
 
-   It must report PostgreSQL and show the expected phone/specification/price counts. Keep the SQLite database as a rollback backup. Full details are in `docs/POSTGRESQL_UPGRADE.md`.
+The migration refuses to copy into a target that already contains project data and does not modify the SQLite source. Keep the SQLite backup as a rollback copy. See `docs/POSTGRESQL_UPGRADE.md` for additional details.
 
-The Docker Compose API service is also configured for Postgres and points to Ollama on the Mac host via `host.docker.internal`. Run visible Selenium scraping on the Mac host rather than inside a headless API container.
-
-## API endpoints
+## API overview
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/health` | Service/database health |
-| GET | `/api/llm` | Ollama and model availability |
-| GET | `/api/agents` | Agent framework and role status |
-| GET | `/api/phones` | List/filter phone records |
-| GET | `/api/phones/{slug}` | Full phone record and specs |
-| GET | `/api/phones/compare?slugs={slug1},{slug2}` | Compare 2–4 phones |
-| GET | `/api/phones/best-battery` | Rank by measured endurance where available |
-| GET/POST | `/api/phones/{slug}/prices` | Read/add dated price observations |
-| POST | `/api/chat` | RAG chatbot question |
-| POST | `/api/reviews/{slug}` | Multi-agent or fallback product review |
-| POST | `/api/scraper/run` | Direct HTTP scraper endpoint (GSMArena may present Turnstile; use the Selenium CLI above for browser-assisted collection) |
+| `GET` | `/api/health` | Service and database health |
+| `GET` | `/api/llm` | Ollama reachability and model availability |
+| `GET` | `/api/agents` | Agent framework and roles |
+| `GET` | `/api/phones` | List/search phone records |
+| `GET` | `/api/phones/{slug}` | Phone detail and specifications |
+| `GET` | `/api/phones/compare?slugs={slug1},{slug2}` | Compare 2–4 phones |
+| `GET` | `/api/phones/best-battery` | Rank measured battery results when available |
+| `GET` | `/api/phones/{slug}/prices` | Dated price observations |
+| `POST` | `/api/phones/{slug}/prices` | Add a price observation |
+| `POST` | `/api/chat` | Ask the RAG chatbot (`query`, optional `session_id`) |
+| `POST` | `/api/reviews/{slug}` | Generate a product review |
+| `POST` | `/api/scraper/run` | Run the server-side Requests/BeautifulSoup scraper |
 
-## Tests and verification
+The interactive API schema is available at `/docs` while the server is running.
+
+## Tests and quality checks
 
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
 python -m compileall -q app scripts tests
 node --check app/static/app.js
+python scripts/check_database.py
+python scripts/verify_scraped_catalog.py --minimum 10 --maximum 15
+python scripts/verify_ollama_rag.py
 ```
 
-The automated browser tests use a mock WebDriver; they verify navigation, parser integration and the human-verification pause, but they do not claim a live crawl. Live Chrome, Ollama generation and PostgreSQL deployment must be demonstrated on the machine where those services run.
+The test suite isolates itself from a developer's `.env` database and uses an in-memory SQLite database. Tests for LangChain/browser boundaries use test doubles; they do not replace the live acceptance checks for GSMArena, Ollama, or PostgreSQL.
 
 ## Project structure
 
 ```text
 app/
-  agents/       # custom agents and LangChain multi-agent workflow
-  api/routes/   # FastAPI routers
-  data/         # 12-model demo catalogue
-  scraper/      # Requests fallback, Selenium browser and BeautifulSoup parser
-  services/     # catalogue persistence, BM25 retrieval, Ollama and chat
-  static/       # responsive web UI
-scripts/        # scrape, verify, migrate, database and Ollama checks
-docs/           # architecture, acceptance mapping, setup and demo guide
-tests/          # unit, API and integration-boundary tests
+  agents/          # Specification, review, and LangChain workflow
+  api/routes/      # FastAPI routers
+  data/            # Demo seed catalogue
+  scraper/         # Requests/BeautifulSoup scraper and normalization
+  services/        # Catalog persistence, BM25 retrieval, Ollama, chat
+  static/          # Browser UI assets
+  database.py      # SQLAlchemy engine, sessions, metadata
+  models.py        # Phone, specification, price, and chat models
+  schemas.py       # Pydantic request/response schemas
+scripts/           # Scrape, migrate, verify, and database utilities
+docs/              # Architecture, acceptance, migration, and demo guides
+tests/             # Unit, API, parser, and integration-boundary tests
 ```
+
+## Repository hygiene
+
+- Never commit `.env`, database files, Chrome profiles, Ollama model files, or personal credentials.
+- `.env.example` contains placeholders only; create a private `.env` locally.
+- The live catalogue is generated locally and is intentionally excluded from Git.
+- GSMArena data and affiliate prices should be attributed to their source and treated as observations at the time of collection.
 
 ## Assessment submission
 
-The PDF requires a GitHub repository, a 5–10 minute demonstration video uploaded to Google Drive, and an email with both links to **sd14@gtrbd.com**. The video should demonstrate live scraping, actual Ollama-backed RAG, the LangChain two-agent review, PostgreSQL if deployed, and the API. Do not claim any external-service run as complete until its acceptance command passes. See `docs/V2_REVIEW_AND_FINAL_ACCEPTANCE.md` and `docs/DEMO_SCRIPT.md`.
+The assessment asks for a GitHub repository, a **5–10 minute** demonstration video uploaded to Google Drive, and an email containing both links to **sd14@gtrbd.com**. The demonstration should show the verified scraper run, the database, an actual `ollama_rag` chatbot answer, a `langchain_multi_agent` review, and the FastAPI endpoints. Do not claim an external integration succeeded unless its corresponding acceptance command has passed.
+
+## License
+
+This project is distributed under the MIT License. See [LICENSE](LICENSE).

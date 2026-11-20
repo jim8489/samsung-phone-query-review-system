@@ -28,12 +28,12 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "A Samsung smartphone research system with Selenium browser navigation, BeautifulSoup GSMArena extraction, "
-        "SQL database, BM25 RAG chatbot, LangChain specialist agents and an optional local Ollama LLM."
+        "A Samsung smartphone research system with catalogue-driven Requests and "
+        "BeautifulSoup GSMArena collection, SQL database, BM25 RAG chatbot, "
+        "LangChain specialist agents and an optional local Ollama LLM."
     ),
     lifespan=lifespan,
 )
-
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(system.router, prefix=settings.api_prefix)
 app.include_router(phones.router, prefix=settings.api_prefix)

@@ -1,3 +1,4 @@
+# Python environments and caches
 .venv/
 venv/
 __pycache__/
@@ -5,11 +6,28 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment/configuration files
 .env
-.DS_Store
+.env.save
+.env.*.save
+.env.local
+
+# Local databases, runtime data, and logs
 *.db
 *.sqlite3
 data/*
 !data/.gitkeep
-.coverage
-htmlcov/
+*.log
+
+# Browser profiles and downloaded model/cache data
+chrome_profile*/
+data/chrome_profile*/
+.ollama/
+
+# Operating system/editor files
+.DS_Store
+.idea/
+.vscode/
